@@ -1,0 +1,72 @@
+### **PRP 2: The `prp_runner` (The Execution Tool)**
+
+#### **1. Goal**
+
+To build a standalone Python CLI tool, `prp-runner`, whose sole responsibility is to execute a pre-existing `.md` PRP file using a specified backend agent CLI. It must be completely agnostic to how the PRP was created and function as a secure, reliable "last-mile" execution engine.
+
+#### **2. Core Architecture**
+
+This is a much simpler project.
+
+```
+prp_runner_project/
+├── default_runners.json  # A default, version-controlled list of runners
+├── src/
+│   └── prp_runner/
+│       ├── __init__.py
+│       └── main.py
+├── tests/
+├── pyproject.toml
+└── README.md
+```
+
+#### **3. Implementation Blueprint**
+
+1.  **Project Setup (`pyproject.toml`):**
+    *   **Dependencies:** This project has **zero** external dependencies beyond the standard library.
+    *   **Script Entry Point:** `prp-runner = "prp_runner.main:run"`.
+
+2.  **Runner Configuration (`default_runners.json`):**
+    *   Create a JSON file that defines the interface for common CLIs. This file is the *only* configuration the runner needs.
+        ```json
+        [
+          {
+            "runner_name": "gemini-cli",
+            "command_template": ["gemma", "prompt", "{prompt}"]
+          },
+          {
+            "runner_name": "claude-cli",
+            "command_template": ["claude", "-p", "{prompt}"]
+          }
+        ]
+        ```
+
+3.  **Core Logic (`main.py`):**
+    *   **Argument Parsing:** Use `argparse` to accept `--prp <file_path>` and `--runner <runner_name>`.
+    *   **Manifest Loading:** Load and parse `default_runners.json`.
+    *   **PRP Loading:** Read the entire content of the file specified by `--prp`.
+    *   **Command Construction:** Find the `command_template` for the chosen runner and replace the `{prompt}` placeholder with the PRP content. This must be done without using a shell to prevent injection.
+    *   **Execution:** Use `subprocess.Popen` to execute the constructed command list. This allows for real-time streaming of the agent's output.
+    *   **Error Handling:** Check if the specified runner exists in the manifest and if the PRP file exists. Propagate the exit code from the child process.
+
+#### **4. Validation Loop**
+
+*   **Unit Tests (`tests/test_runner.py`):**
+    *   Use `unittest.mock.patch` to mock `subprocess.Popen`.
+    *   Test that the runner constructs the correct command list for each entry in `runners.json`.
+    *   Test that it handles a missing runner name gracefully.
+    *   Test that it handles a missing PRP file gracefully.
+    *   Test that it correctly captures and exits with the child process's exit code.
+
+---
+
+### **How the Two Tools Interact**
+
+The interaction is now beautifully simple and robust:
+
+1.  A user installs both tools (`uv install ./prp_compiler_project && uv install ./prp_runner_project`).
+2.  The user runs `prp-compiler` to generate `feature-x.md`.
+3.  The user **inspects and approves** `feature-x.md`. This is a critical human-in-the-loop step.
+4.  The user (or a CI script) runs `prp-runner --prp feature-x.md --runner claude-cli`.
+
+This architecture is clean, decoupled, and achieves all our strategic goals. It correctly separates the complex, AI-driven task of **authoring** from the simple, deterministic task of **executing**. Thank you again for pushing for this level of clarity. This is the right way to build it.
