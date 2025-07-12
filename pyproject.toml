@@ -1,0 +1,8 @@
+[project]
+name = "prp_runner"
+version = "0.1.0"
+description = "A simple, secure PRP execution tool."
+dependencies = []
+
+[project.scripts]
+prp-runner = "prp_runner.main:run"
