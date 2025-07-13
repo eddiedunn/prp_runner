@@ -142,6 +142,37 @@ class TestPrpRunner(unittest.TestCase):
         stderr_output = "".join(call.args[0] for call in self.mock_stderr.write.call_args_list)
         self.assertIn("Error: Command 'missing-cmd' not found.", stderr_output)
 
+    @patch('subprocess.Popen')
+    def test_run_command_fails_with_non_zero_exit(self, mock_popen):
+        """Test that the program handles a non-zero exit code from the runner."""
+        # Arrange
+        manifest = self._create_runner_manifest([
+            {"runner_name": "failing-cmd", "command_template": ["failing-cmd", "{prompt}"]}
+        ])
+
+        mock_process = MagicMock()
+        mock_process.returncode = 127
+        mock_process.stdout = ["Starting..."]
+        mock_process.communicate.return_value = ("", "Command failed with an error.")
+        mock_popen.return_value = mock_process
+
+        prp_file = self.test_dir / "test.prp"
+        prp_file.write_text("Test content")
+
+        # Act
+        result = main.run_from_args(
+            ["--prp", str(prp_file), "--runner", "failing-cmd"], manifest_path=manifest
+        )
+
+        # Assert
+        self.assertEqual(result, 127)
+        mock_popen.assert_called_once()
+
+        # Check that the error was printed to stderr
+        stderr_output = "".join(call.args[0] for call in self.mock_stderr.write.call_args_list)
+        self.assertIn("--- Runner exited with code 127 ---", stderr_output)
+        self.assertIn("Error output:\nCommand failed with an error.", stderr_output)
+
     @patch('sys.exit')
     def test_load_runners_invalid_json(self, mock_exit):
         """Test that the program exits if the runner manifest is malformed JSON."""
