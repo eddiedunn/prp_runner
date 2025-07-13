@@ -4,10 +4,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 def get_runner_manifest_path() -> Path:
     """Return the path to the default_runners.json file."""
     # Assumes the script is in src/prp_runner/ and the JSON is at the root.
     return Path(__file__).parent.parent.parent / "default_runners.json"
+
 
 def load_runners(manifest_path: Path) -> dict:
     """Load the runner configurations from the JSON manifest."""
@@ -28,6 +30,7 @@ def load_runners(manifest_path: Path) -> dict:
         except (json.JSONDecodeError, KeyError) as e:
             print(f"Error: Invalid format in {manifest_path}: {e}", file=sys.stderr)
             sys.exit(1)
+
 
 def run_from_args(argv: list[str] | None = None, manifest_path: Path | None = None) -> int:
     """
@@ -69,13 +72,17 @@ def run_from_args(argv: list[str] | None = None, manifest_path: Path | None = No
         print(f"Error: PRP file not found at {args.prp}", file=sys.stderr)
         return 1
     prp_content = args.prp.read_text()
+    working_dir = args.prp.parent
 
     # Construct the final prompt
     runner_config = runners[args.runner]
     system_prompt_template = runner_config.get("system_prompt_template")
 
     if system_prompt_template:
-        final_prompt = system_prompt_template.replace("{prp_content}", prp_content)
+        # First, replace the main content
+        prompt_with_content = system_prompt_template.replace("{prp_content}", prp_content)
+        # Then, replace any other placeholders
+        final_prompt = prompt_with_content.replace("{working_dir}", str(working_dir))
     else:
         final_prompt = prp_content
 
@@ -87,12 +94,31 @@ def run_from_args(argv: list[str] | None = None, manifest_path: Path | None = No
 
     # Execute the command
     try:
-        working_dir = args.prp.parent
         process = subprocess.Popen(
-            command, stderr=subprocess.PIPE, text=True, cwd=working_dir
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=working_dir,
+            bufsize=1,  # Line-buffered
+            universal_newlines=True
         )
-        process.wait()
+
+        # Stream stdout in real-time
+        if process.stdout:
+            for line in process.stdout:
+                print(line, end='', flush=True)
+
+        # Wait for the process to complete and capture remaining output
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            print(f"\n--- Runner exited with code {process.returncode} ---", file=sys.stderr)
+            if stderr:
+                print(f"Error output:\n{stderr}", file=sys.stderr)
+
         return process.returncode
+
     except FileNotFoundError:
         print(
             f"Error: Command '{command[0]}' not found.",
@@ -103,6 +129,7 @@ def run_from_args(argv: list[str] | None = None, manifest_path: Path | None = No
     except Exception as e:
         print(f"An unexpected error occurred: {e}", file=sys.stderr)
         return 1
+
 
 def run() -> int:
     """
