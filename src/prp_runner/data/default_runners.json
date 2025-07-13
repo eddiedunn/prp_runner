@@ -1,0 +1,7 @@
+[
+  {
+    "runner_name": "claude-cli",
+    "command_template": ["claude", "-p", "{prompt}"],
+    "system_prompt_template": "You are an expert AI assistant. Your task is to execute the following plan. You are operating inside the directory {working_dir}. Any relative paths mentioned in the plan are relative to this directory. Think step-by-step and follow the instructions carefully.\n\n---\n\n{prp_content}"
+  }
+]
